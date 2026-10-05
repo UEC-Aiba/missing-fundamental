@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ミッシングファンダメンタル体験</title>
+<style>
+  :root {
+    --text: #1B2A33;
+    --title: #1A5276;
+    --teal: #0E6E8A;
+    --amber: #D1782F;
+    --tint: #E6F0F4;
+    --muted: #7B8C96;
+    --line: #C9D6DC;
+    --bg: #FFFFFF;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); }
+  body {
+    font-family: Meiryo, "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+    padding: max(14px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
+    max-width: 560px; margin: 0 auto;
+  }
+  h1 { font-size: 20px; color: var(--title); margin: 4px 0 2px; }
+  .sub { font-size: 13px; color: #445A66; margin: 0 0 10px; }
+  .panel { background: var(--tint); border-radius: 12px; padding: 10px 10px 6px; margin-bottom: 10px; }
+  .panel h2 { font-size: 12px; color: #445A66; margin: 0 0 4px; font-weight: 600; }
+  canvas { display: block; width: 100%; }
+  #spec { height: 150px; }
+  #wave { height: 80px; }
+  .status { font-size: 14px; line-height: 1.5; min-height: 4.6em; margin: 0 0 10px; }
+  .status b { color: var(--title); }
+  .status .miss { color: var(--amber); font-weight: 700; }
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
+  .grid button {
+    font: inherit; font-size: 16px; font-weight: 700; color: var(--title);
+    background: #fff; border: 2px solid var(--teal); border-radius: 12px;
+    min-height: 62px; padding: 4px 2px; touch-action: manipulation; cursor: pointer;
+    line-height: 1.15;
+  }
+  .grid button small { display: block; font-size: 11px; font-weight: 400; color: var(--muted); }
+  .grid button[aria-pressed="true"] { background: var(--teal); color: #fff; }
+  .grid button[aria-pressed="true"] small { color: #D7EAF0; }
+  .step { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 0 0 4px; }
+  .step button {
+    font: inherit; font-size: 13px; font-weight: 700; color: var(--teal); background: #fff;
+    border: 1.5px solid var(--line); border-radius: 8px; padding: 7px 2px; touch-action: manipulation; cursor: pointer;
+  }
+  .step button[aria-pressed="true"] { background: var(--title); border-color: var(--title); color: #fff; }
+  .steplabel { font-size: 12px; color: #445A66; margin: 0 0 4px; }
+  .stepnote { font-size: 12px; color: var(--amber); min-height: 2.6em; line-height: 1.4; margin: 0 0 8px; }
+  #play {
+    width: 100%; font: inherit; font-size: 17px; font-weight: 700; color: #fff; background: var(--title);
+    border: none; border-radius: 12px; min-height: 56px; margin-bottom: 12px; touch-action: manipulation; cursor: pointer;
+  }
+  #play[aria-pressed="true"] { background: var(--amber); }
+  .row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .row label { font-size: 13px; color: #445A66; white-space: nowrap; }
+  .row input[type=range] { flex: 1; }
+  #clear {
+    font: inherit; font-size: 14px; font-weight: 700; color: var(--amber);
+    background: #fff; border: 2px solid var(--amber); border-radius: 10px;
+    padding: 8px 12px; touch-action: manipulation; cursor: pointer;
+  }
+  .note { font-size: 12px; line-height: 1.6; color: #445A66; background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
+  .note ul { margin: 4px 0 0; padding-left: 1.2em; }
+</style>
+</head>
+<body>
+  <h1>ミッシングファンダメンタル体験</h1>
+  <p class="sub">周波数のボタンを選び（もう一度押すと解除）、下の再生ボタンで同時に鳴らします。</p>
+
+  <div class="panel">
+    <h2>スペクトル（模式図）</h2>
+    <canvas id="spec"></canvas>
+  </div>
+  <div class="panel">
+    <h2>合成波形（30 ms）</h2>
+    <canvas id="wave"></canvas>
+  </div>
+
+  <p class="status" id="status" aria-live="polite"></p>
+
+  <p class="steplabel">周波数の刻み（初期値：300 Hz）</p>
+  <div class="step" id="stepSel" role="group" aria-label="周波数の刻み"></div>
+  <p class="stepnote" id="stepnote"></p>
+
+  <div class="grid" id="grid"></div>
+
+  <button id="play" type="button" aria-pressed="false"></button>
+
+  <div class="row">
+    <label for="vol">音量</label>
+    <input type="range" id="vol" min="0" max="100" value="70">
+    <button id="clear" type="button">選択を解除</button>
+  </div>
+
+  <div class="note">
+    <b>使い方のヒント</b>
+    <ul>
+      <li id="hint1"></li>
+      <li>イヤホン（ヘッドホン）を推奨します。スマホのスピーカーは低音（おおよそ 300〜500 Hz 未満）が弱く、機種によって差があります。</li>
+      <li>iPhone で音が出ないときは、本体の音量を上げ、マナーモード（消音スイッチ）を解除してください。Safari で開いてください。</li>
+    </ul>
+    <div id="audiostate" style="margin-top:4px;color:#7B8C96"></div>
+    <ul style="display:none">
+    </ul>
+  </div>
+
+<script>
+(() => {
+  let STEP = 300;
+  let FREQS = [];
+  const active = new Set();
+  let ctx = null, master = null;
+
+  const grid = document.getElementById('grid');
+  const statusEl = document.getElementById('status');
+  const vol = document.getElementById('vol');
+
+  // ---------- audio ----------
+  // iOS: Web Audio is muted by the silent switch unless the page also plays a "media" element.
+  let unlocked = false;
+  function unlockIOS() {
+    if (unlocked) return;
+    unlocked = true;
+    try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
+    try {
+      const sr = 8000, n = sr / 2, buf = new Uint8Array(44 + n);
+      const dv = new DataView(buf.buffer);
+      const wr = (o, t) => { for (let i = 0; i < t.length; i++) buf[o + i] = t.charCodeAt(i); };
+      wr(0, 'RIFF'); dv.setUint32(4, 36 + n, true); wr(8, 'WAVEfmt ');
+      dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+      dv.setUint32(24, sr, true); dv.setUint32(28, sr, true); dv.setUint16(32, 1, true); dv.setUint16(34, 8, true);
+      wr(36, 'data'); dv.setUint32(40, n, true);
+      buf.fill(128, 44);
+      const a = new Audio(URL.createObjectURL(new Blob([buf], { type: 'audio/wav' })));
+      a.loop = true; a.setAttribute('playsinline', '');
+      a.play().catch(() => {});
+    } catch (e) {}
+  }
+  function ensureAudio() {
+    unlockIOS();
+    if (!ctx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      ctx = new AC();
+      master = ctx.createGain();
+      const comp = ctx.createDynamicsCompressor(); // safety limiter
+      master.connect(comp); comp.connect(ctx.destination);
+      applyVolume();
+    }
+    if (ctx.state !== 'running') ctx.resume().then(showState).catch(() => {});
+    showState();
+  }
+  function showState() {
+    const el = document.getElementById('audiostate');
+    if (el && ctx) el.textContent = 'オーディオの状態：' + (ctx.state === 'running' ? '動作中' : ctx.state === 'suspended' ? '停止中（もう一度ボタンを押してください）' : ctx.state);
+  }
+  function applyVolume() {
+    if (!master) return;
+    master.gain.setTargetAtTime(Math.pow(vol.value / 100, 2), ctx.currentTime, 0.03);
+  }
+  const DUR = 2.0; // seconds
+  let voices = [];
+  let playTimer = null;
+  const playBtn = document.getElementById('play');
+
+  function stopPlayback() {
+    if (playTimer) { clearTimeout(playTimer); playTimer = null; }
+    if (ctx) {
+      voices.forEach(v => {
+        v.gain.gain.cancelScheduledValues(ctx.currentTime);
+        v.gain.gain.setTargetAtTime(0, ctx.currentTime, 0.015);
+        try { v.osc.stop(ctx.currentTime + 0.12); } catch (e) {}
+      });
+    }
+    voices = [];
+    setPlayUI(false);
+  }
+  function setPlayUI(on) {
+    playBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    playBtn.textContent = on ? '■ 止める' : '▶ 選んだ音を同時に鳴らす（' + DUR + '秒）';
+  }
+  function play() {
+    if (voices.length) { stopPlayback(); return; }
+    if (active.size === 0) return;
+    ensureAudio();
+    const fs = [...active].sort((a, b) => a - b);
+    const g = 0.5 / Math.sqrt(fs.length);
+    const t0 = ctx.currentTime + 0.06; // all tones start at the same instant
+    const ramp = 0.03;
+    fs.forEach(f => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = f;
+      gain.gain.setValueAtTime(0, t0);
+      gain.gain.linearRampToValueAtTime(g, t0 + ramp);
+      gain.gain.setValueAtTime(g, t0 + DUR - ramp);
+      gain.gain.linearRampToValueAtTime(0, t0 + DUR);
+      osc.connect(gain); gain.connect(master);
+      osc.start(t0); osc.stop(t0 + DUR + 0.05);
+      voices.push({ osc, gain });
+    });
+    setPlayUI(true);
+    playTimer = setTimeout(() => { voices = []; playTimer = null; setPlayUI(false); }, (DUR + 0.15) * 1000);
+  }
+
+  // ---------- UI ----------
+  function buildGrid() {
+    FREQS = Array.from({ length: 12 }, (_, i) => (i + 1) * STEP);
+    grid.innerHTML = '';
+    FREQS.forEach(f => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.dataset.f = f;
+      b.setAttribute('aria-pressed', 'false');
+      b.innerHTML = f + '<small>Hz</small>';
+      b.addEventListener('click', () => toggle(f));
+      grid.appendChild(b);
+    });
+  }
+  const stepSel = document.getElementById('stepSel');
+  const stepNote = document.getElementById('stepnote');
+  const hint1 = document.getElementById('hint1');
+  [100, 200, 300, 400].forEach(st => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.dataset.step = st;
+    b.textContent = st + ' Hz刻み';
+    b.addEventListener('click', () => setStep(st));
+    stepSel.appendChild(b);
+  });
+  function setStep(st) {
+    clearAll();
+    STEP = st;
+    buildGrid();
+    stepSel.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', +b.dataset.step === st ? 'true' : 'false'));
+    const max = st * 12;
+    let note = st + '〜' + max + ' Hz。';
+    if (st <= 200) note += 'スマホの内蔵スピーカーでは低音が出にくいため、イヤホン推奨です。';
+    else if (st === 300) note += 'スマホのスピーカーでも最低音から鳴らしやすい設定です。';
+    else note += '最高音が約' + (max / 1000) + ' kHz で、位相固定の限界（約4〜5 kHz）に近くなります。';
+    stepNote.textContent = note;
+    hint1.textContent = '例：' + [2, 3, 4].map(n => n * st).join('・') + ' Hz を重ねると、どんな高さに聞こえるでしょうか。次に ' + st + ' Hz を足して（または外して）もう一度鳴らし、比べてみましょう。';
+    refresh();
+  }
+
+  function toggle(f) {
+    stopPlayback();
+    if (active.has(f)) active.delete(f); else active.add(f);
+    refresh();
+  }
+  function clearAll() {
+    stopPlayback();
+    active.clear();
+    refresh();
+  }
+  document.getElementById('clear').addEventListener('click', clearAll);
+  playBtn.addEventListener('click', play);
+  setPlayUI(false);
+  vol.addEventListener('input', applyVolume);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) stopPlayback(); });
+
+  // ---------- analysis ----------
+  function gcd(a, b) { return b ? gcd(b, a % b) : a; }
+  function analyse() {
+    const fs = [...active].sort((a, b) => a - b);
+    if (fs.length < 2) return { fs, f0: null };
+    const g = fs.map(f => f / STEP).reduce(gcd) * STEP;
+    return { fs, f0: g, f0Present: active.has(g), minHarm: fs[0] / g };
+  }
+
+  function refresh() {
+    grid.querySelectorAll('button').forEach(b => {
+      b.setAttribute('aria-pressed', active.has(+b.dataset.f) ? 'true' : 'false');
+    });
+    const a = analyse();
+    let html;
+    if (a.fs.length === 0) {
+      html = '鳴らしたい周波数のボタンを選んでください。';
+    } else if (a.fs.length === 1) {
+      html = '選んだ音：<b>' + a.fs[0] + ' Hz</b>（単音）';
+    } else {
+      html = '選んだ音：<b>' + a.fs.join('・') + ' Hz</b><br>共通の基本周波数 f0：<b>' + a.f0 + ' Hz</b> ';
+      if (a.f0Present) {
+        html += '（f0 を含んでいます）';
+      } else {
+        html += '<span class="miss">― f0 の成分は含まれていません（ミッシングファンダメンタル）</span>';
+      }
+      if (a.minHarm > 8) {
+        html += '<br><small>高次の倍音だけだと、f0 のピッチは聞こえにくくなります。</small>';
+      }
+    }
+    statusEl.innerHTML = html;
+    drawSpectrum(a);
+    drawWave(a);
+  }
+
+  // ---------- drawing ----------
+  function setup(canvas) {
+    const dpr = window.devicePixelRatio || 1;
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+    const c = canvas.getContext('2d');
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    c.clearRect(0, 0, w, h);
+    return { c, w, h };
+  }
+
+  function drawSpectrum(a) {
+    const { c, w, h } = setup(document.getElementById('spec'));
+    const padL = 10, padR = 10, labelH = 18, top = 8;
+    const baseY = h - labelH, plotH = baseY - top;
+    const step = (w - padL - padR) / 12;
+    const xOf = n => padL + step * (n - 0.5);
+    c.strokeStyle = '#7B8C96'; c.lineWidth = 1.25;
+    c.beginPath(); c.moveTo(padL, baseY); c.lineTo(w - padR, baseY); c.stroke();
+    c.font = '10px system-ui, sans-serif'; c.textAlign = 'center'; c.fillStyle = '#445A66';
+    const bw = Math.min(14, step * 0.5);
+    FREQS.forEach((f, i) => {
+      const x = xOf(i + 1);
+      c.fillText(f, x, h - 4);
+      if (active.has(f)) {
+        c.fillStyle = '#0E6E8A';
+        c.fillRect(x - bw / 2, top + 6, bw, plotH - 6);
+        c.fillStyle = '#445A66';
+      } else {
+        c.strokeStyle = '#C9D6DC'; c.lineWidth = 1;
+        c.beginPath(); c.moveTo(x, baseY); c.lineTo(x, baseY - 8); c.stroke();
+      }
+    });
+    if (a.f0 && !a.f0Present) {
+      const x = xOf(a.f0 / STEP);
+      c.setLineDash([4, 3]); c.strokeStyle = '#D1782F'; c.lineWidth = 1.75;
+      c.strokeRect(x - bw / 2, top + 6, bw, plotH - 6);
+      c.setLineDash([]);
+      c.fillStyle = '#D1782F'; c.font = 'bold 11px system-ui, sans-serif';
+      c.fillText('f0', x, top + 2);
+    }
+  }
+
+  function drawWave(a) {
+    const { c, w, h } = setup(document.getElementById('wave'));
+    const T = 0.030, padX = 6, mid = h / 2;
+    c.strokeStyle = '#C9D6DC'; c.lineWidth = 1;
+    c.beginPath(); c.moveTo(padX, mid); c.lineTo(w - padX, mid); c.stroke();
+    if (a.fs.length === 0) return;
+    const N = Math.max(200, Math.round(w * 2));
+    const ys = new Array(N + 1);
+    let maxAbs = 1e-9;
+    for (let i = 0; i <= N; i++) {
+      const t = (T * i) / N;
+      let y = 0;
+      a.fs.forEach(f => { y += Math.sin(2 * Math.PI * f * t); });
+      ys[i] = y; maxAbs = Math.max(maxAbs, Math.abs(y));
+    }
+    // 1/f0 period marks
+    if (a.f0) {
+      c.setLineDash([3, 3]); c.strokeStyle = '#D1782F'; c.lineWidth = 1;
+      for (let t = 0; t <= T + 1e-9; t += 1 / a.f0) {
+        const x = padX + (w - 2 * padX) * (t / T);
+        c.beginPath(); c.moveTo(x, 2); c.lineTo(x, h - 2); c.stroke();
+      }
+      c.setLineDash([]);
+    }
+    c.strokeStyle = '#0E6E8A'; c.lineWidth = 2; c.lineJoin = 'round';
+    c.beginPath();
+    for (let i = 0; i <= N; i++) {
+      const x = padX + (w - 2 * padX) * (i / N);
+      const y = mid - (ys[i] / maxAbs) * (mid - 6);
+      i ? c.lineTo(x, y) : c.moveTo(x, y);
+    }
+    c.stroke();
+  }
+
+  window.addEventListener('resize', refresh);
+  setStep(300);
+})();
+</script>
+</body>
+</html>
